@@ -1,0 +1,12 @@
+# Directories:
+backups/
+temp/
+
+# Files:
+*.html
+*.json
+
+# Standard Python gitignore:
+__pycache__/
+*.py[cod]
+*$py.class

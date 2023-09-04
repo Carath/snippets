@@ -1,2 +1,3 @@
-# snippets
-Various unrelated code snippets.
+# Snippets
+
+*Various unrelated code snippets.*
