@@ -84,16 +84,13 @@ if __name__ == "__main__":
 
 	from sklearn.datasets import load_digits
 	data = load_digits().data
-
 	data = data.astype("uint8")
-	# print(data.dtype)
-	# exit()
-
 	data = data.reshape((len(data), 8, 8)) # 2D shaped data
 	# data = data.tolist() # converting to lists
 	# data = data[:, :2] # 2 dimensions only
 
-	print("data:", data[:2], "...\n", sep="\n")
+	print("data:", data[:2], "...\n",
+		"data shape:", np.array(data).shape, "", sep="\n")
 
 	scaler = StableScalerMinMax()
 	scaler.fit(data, output_range=(0., 1.), outlier_ratio=0.02)
@@ -101,14 +98,16 @@ if __name__ == "__main__":
 	path = "scaler.json"
 	scaler.save(path)
 	scaler = StableScalerMinMax.load(path)
+	scaler.print()
 
 	normalized = scaler.transform(data, clip=False)
 	print("\nnormalized data:", normalized[:2], "...", sep="\n")
 
-	outliers = scaler.get_outliers(data)
-	print("\noutliers:", outliers[:2], "", sep="\n")
+	denormalized = scaler.inverse_transform(normalized)
+	print("\ndenormalized data:", denormalized[:2], "...", sep="\n")
 
-	scaler.print()
+	outliers = scaler.get_outliers(data)
+	print("\noutliers:", outliers[:2], "...", sep="\n")
 
 # StableScalerMinMax issues:
 # - Outlier_ratio is applied on each dimension independantly,

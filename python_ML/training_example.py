@@ -113,8 +113,17 @@ def noisyImage(img, rng=None):
 		# # Random rotations - do not use it, black frame issue!
 		# angle = float(rng.uniform(-noiseLevel_ang, noiseLevel_ang, size=1)[0])
 		# # angle = float(rng.normal(loc=0., scale=noiseLevel_ang, size=1)[0])
-		# img = ndimage.rotate(img.reshape(*src_input_shape), angle, reshape=False, order=1).flatten().round().astype("uint8")
 
+		# if len(img.shape) == 1:
+		# 	# plt.imshow(img.reshape(*src_input_shape), cmap="binary")
+		# 	img = ndimage.rotate(img.reshape(*src_input_shape), angle, reshape=False, order=1)
+		# 	img = img.flatten().round().astype("uint8")
+		# 	# plt.imshow(img.reshape(*src_input_shape), cmap="binary")
+		# 	# plt.show()
+		# 	# exit()
+		# else:
+		# 	img = np.array([ ndimage.rotate(x.reshape(*src_input_shape), angle,
+		# 		reshape=False, order=1).flatten().round().astype("uint8") for x in img ])
 	return img
 
 def buildBinaryDataset(X, y, createScarcity: bool):
@@ -182,7 +191,11 @@ scaler.save(path)
 scaler = StableScalerMinMax.load(path)
 
 # Adding noise and normalizing the data:
-process_data = lambda img, label, rng : (scaler.transform(noisyImage(img, rng=rng)), label)
+def process_data(img, label, rng):
+	img = noisyImage(img, rng=rng)
+	if useNormalization:
+		img = scaler.transform(img)
+	return (img, label)
 
 # prior: class augmentation (with a bit of noise to not repeat).
 dag_train = DataGenerator(x_train, y_train, batch_size,
@@ -194,8 +207,8 @@ dag_valid = DataGenerator(x_valid, y_valid, batch_size,
 # import matplotlib.pyplot as plt
 # for i in range(5):
 # 	print(b[1][i])
-# 	# plt.imshow((b[0][i].reshape(28, 28, 1) * 255).astype("uint8"), cmap="gray")
-# 	plt.imshow((b[0][i].reshape(32, 32, 3) * 255).astype("uint8"), cmap="gray")
+# 	plt.imshow((b[0][i].reshape(28, 28, 1) * 255).astype("uint8"), cmap="gray")
+# 	# plt.imshow((b[0][i].reshape(32, 32, 3) * 255).astype("uint8"), cmap="gray")
 # 	plt.show()
 # exit()
 
@@ -214,7 +227,6 @@ print("y_test.shape: ", y_test.shape, "\n")
 
 n_class = len(set(map(int, y_train.flatten())) | set(map(int, y_valid.flatten())))
 print("n_class:", n_class)
-
 # exit()
 
 ##########################################

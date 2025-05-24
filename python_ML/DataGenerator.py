@@ -19,14 +19,14 @@ class DataGenerator(keras.utils.PyDataset):
 
 	def __init__(self, x, y, batch_size: int,
 		dtype=None, process_data=None, const_batch_size: bool=True,
-		cycles: int=1, seed: int=0, epoch_invariance: bool=False, **kwargs):
+		cycles: int=1, seed=None, epoch_invariance: bool=False, **kwargs):
 
 		super().__init__(**kwargs)
 		assert len(x) == len(y), f"Incompatible data lengths: {len(x)} vs {len(y)}"
 		self.x, self.y = np.array(x, dtype=dtype), np.array(y, dtype=dtype)
 		self.batch_size = batch_size
 		self.process_data = process_data
-		self.seed = round(time.time()) if seed == 0 else seed
+		self.seed = round(time.time()) if seed is None else seed
 		self.epoch_invariance = epoch_invariance
 		self.batch_number = len(self.x) // self.batch_size
 		if not const_batch_size:
