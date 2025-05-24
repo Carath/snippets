@@ -1,0 +1,10 @@
+#
+# Standard Java .gitignore
+#
+*.class
+*.jar
+*.war
+
+# Dataset et réseaux:
+mnist_samples/
+sauvegardes/
