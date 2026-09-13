@@ -1,19 +1,19 @@
 import json
 import numpy as np
 
-# Will convert the argument to a numpy array, while doing no
-# copy if it already is. To copy it, use np.array(x) instead.
-convertToNumpyArray = lambda x : x if type(x) == np.ndarray else np.array(x)
-
-numpyToList = lambda x : x.tolist() if type(x) == np.ndarray else x
+# StableScalerMinMax weaknesses:
+# - 'outlier_ratio' is applied on each dimension independantly,
+#   so this will not work well for a large number of dimensions.
+# - This treats each column equally, which might not be desired.
 
 class StableScalerMinMax:
 	def __init__(self):
-		self.output_range = None
 		self.xMinArray = None
 		self.xMaxArray = None
 		self.scaleArray = None
 		self.offsetArray = None
+		self.output_range = None
+		self.outlier_ratio = None
 
 	def __init_check(self):
 		assert self.output_range is not None, "Cannot process, the scaler was not fitted to any data."
@@ -23,50 +23,57 @@ class StableScalerMinMax:
 		self.__init_check()
 		return self.scaleArray.shape
 
-	def fit(self, data, output_range=(0., 1.), outlier_ratio=0.02):
-		data = convertToNumpyArray(data)
-		assert len(output_range) == 2 and output_range[0] < output_range[1] and 0. <= outlier_ratio <= 1.
+	# If 'outlier_ratio' receive only 1 value, it will be used for both sides.
+	def fit(self, data, output_range: tuple=(0., 1.), outlier_ratio: tuple=(0.01, 0.01)):
+		data = np.asarray(data)
+		l, r = outlier_ratio[0], outlier_ratio[-1]
+		assert len(output_range) == 2 and output_range[0] < output_range[1]
+		assert 0. <= l and 0. <= r and l + r < 1.
 		assert len(data) > 0, "No data to be fitted on."
-		assert np.isfinite(data).sum() == len(data.flatten()), "Data contains non finite values."
+		assert np.isfinite(data).all(), "Data contains non finite values."
 		self.output_range = output_range
-		self.xMinArray = np.nanpercentile(data, outlier_ratio/2. * 100., axis=0)
-		self.xMaxArray = np.nanpercentile(data, (1.-outlier_ratio/2.) * 100., axis=0)
+		self.outlier_ratio = outlier_ratio
+		self.xMinArray = np.nanpercentile(data, l * 100., axis=0)
+		self.xMaxArray = np.nanpercentile(data, (1.-r) * 100., axis=0)
 		self.scaleArray = np.divide(output_range[1] - output_range[0], self.xMaxArray - self.xMinArray,
 			out=np.zeros_like(self.xMinArray), where=self.xMinArray < self.xMaxArray)
 		self.offsetArray = output_range[0] - self.scaleArray * self.xMinArray
 
-	def transform(self, data, clip=False):
+	def transform(self, data, clip: bool=False):
 		self.__init_check()
-		data = convertToNumpyArray(data)
+		data = np.asarray(data)
 		result = self.offsetArray + self.scaleArray * data
 		if clip:
 			np.clip(result, self.output_range[0], self.output_range[1], out=result)
 		return result
 
-	def fit_transform(self, data, output_range=(0., 1.), outlier_ratio=0.02, clip=False):
+	def fit_transform(self, data, output_range: tuple=(0., 1.),
+			outlier_ratio: tuple=(0.01, 0.01), clip: bool=False):
 		self.fit(data, output_range=output_range, outlier_ratio=outlier_ratio)
 		return self.transform(data, clip=clip)
 
 	def inverse_transform(self, data): # assumes no clipping has been done.
 		self.__init_check()
-		data = convertToNumpyArray(data)
-		return np.divide(data - self.offsetArray, self.scaleArray,
-			out=self.xMinArray.copy(), where=self.scaleArray != 0)
+		data = np.asarray(data)
+		out = np.broadcast_to(self.xMinArray, data.shape).copy()
+		return np.divide(data - self.offsetArray, self.scaleArray, out=out, where=self.scaleArray != 0.)
 
 	# Returns a numpy array of the same length as the input, filled with boolean values.
 	def get_outliers(self, data):
 		self.__init_check()
-		data = convertToNumpyArray(data)
-		return np.logical_or(data < self.xMinArray, self.xMaxArray < data).any(axis=1)
+		data = np.asarray(data)
+		axis = tuple(range(1, data.ndim))
+		return ((data < self.xMinArray) | (self.xMaxArray < data)).any(axis=axis)
 
-	def save(self, path):
+	def save(self, path: str):
 		self.__init_check()
 		with open(path, "w") as file:
+			numpyToList = lambda x : x.tolist() if type(x) == np.ndarray else x
 			json.dump({ key : numpyToList(value) for (key, value) in vars(self).items() }, file)
 			print(f"Saved scaler to: '{path}'")
 
 	@staticmethod
-	def load(path):
+	def load(path: str):
 		with open(path, "r") as file:
 			d = json.load(file)
 			scaler = StableScalerMinMax()
@@ -82,18 +89,33 @@ class StableScalerMinMax:
 
 if __name__ == "__main__":
 
-	from sklearn.datasets import load_digits
-	data = load_digits().data
-	data = data.astype("uint8")
-	data = data.reshape((len(data), 8, 8)) # 2D shaped data
-	# data = data.tolist() # converting to lists
-	# data = data[:, :2] # 2 dimensions only
+	##########################################
+	# Dataset loading / creation:
 
-	print("data:", data[:2], "...\n",
-		"data shape:", np.array(data).shape, "", sep="\n")
+	# Random values:
+	np.random.seed(123)
+	data = np.random.uniform(low=0.0, high=1.0, size=(20, 2))
+	# data = np.random.uniform(low=0.0, high=1.0, size=(20,))
+
+	# # Digit Dataset:
+	# from sklearn.datasets import load_digits
+	# data = load_digits().data
+	# data = data.astype("uint8")
+	# data = data.reshape((len(data), 8, 8)) # 2D shaped data
+	# # data = data[:, :2] # 2 dimensions only
+
+	# # MNIST Dataset:
+	# from tensorflow import keras
+	# (data, _), (_, _) = keras.datasets.mnist.load_data()
+	# # data = data.reshape(data.shape[0], -1) # (n, p*q), each row is one flattened entry
+
+	##########################################
+	# Scaler fitting and usage:
+
+	print("Data:", data, f"shape: {data.shape}", sep="\n")
 
 	scaler = StableScalerMinMax()
-	scaler.fit(data, output_range=(0., 1.), outlier_ratio=0.02)
+	scaler.fit(data, output_range=(0., 1.), outlier_ratio=(0.01, 0.01))
 
 	path = "scaler.json"
 	scaler.save(path)
@@ -101,16 +123,10 @@ if __name__ == "__main__":
 	scaler.print()
 
 	normalized = scaler.transform(data, clip=False)
-	print("\nnormalized data:", normalized[:2], "...", sep="\n")
+	print("\nNormalized data:", normalized, f"shape: {normalized.shape}", sep="\n")
 
 	denormalized = scaler.inverse_transform(normalized)
-	print("\ndenormalized data:", denormalized[:2], "...", sep="\n")
+	print("\nDenormalized data:", denormalized, f"shape: {denormalized.shape}", sep="\n")
 
 	outliers = scaler.get_outliers(data)
-	print("\noutliers:", outliers[:2], "...", sep="\n")
-
-# StableScalerMinMax issues:
-# - Outlier_ratio is applied on each dimension independantly,
-#   so this will not work well for a large number of dimensions.
-# - This treats column equally, where it probably shoudn't.
-# - Works well only on symmetrical distributions.
+	print(f"\nFound {outliers.sum()} outliers:", outliers, f"shape: {outliers.shape}", sep="\n")
