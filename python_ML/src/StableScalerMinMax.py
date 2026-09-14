@@ -1,10 +1,15 @@
-import json
-import numpy as np
+# This scaler is meant to act like sklearn's MinMaxScaler, yet in a more robust
+# way: instead of fitting on the global column-wise minimum and maximum of the
+# dataset, the most extreme percentiles of each column are discarded. This makes
+# the scaler more resilient to outliers while also using an internal linear model.
 
-# StableScalerMinMax weaknesses:
+# StableScalerMinMax limitations:
 # - 'outlier_ratio' is applied on each dimension independantly,
 #   so this will not work well for a large number of dimensions.
 # - This treats each column equally, which might not be desired.
+
+import json
+import numpy as np
 
 class StableScalerMinMax:
 	def __init__(self):
